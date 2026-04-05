@@ -5,6 +5,7 @@
 #include <cstdlib>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "mining.h"
 
 extern "C" {
@@ -41,6 +42,8 @@ void MiningInfoV2Standard::updateJob(uint32_t job_id, uint32_t version,
     m_version_mask = version_mask;
     m_difficulty = difficulty;
     m_jobSent = false;  // new job from pool, ready to send
+    m_jobSentTimeUs = 0;
+    m_ntimeRolls = 0;  // reset roll counter on new pool job
     snprintf(m_jobid_str, sizeof(m_jobid_str), "%lu", (unsigned long)job_id);
 }
 
@@ -109,8 +112,9 @@ bm_job *MiningInfoV2Standard::buildBmJob(uint32_t extranonce_2, int pool_id, uin
     job->jobid = strdup(m_jobid_str);
     job->extranonce2 = strdup(""); // unused in SV2 standard channel
 
-    // Standard Channel: mark as sent, don't resend on timer
+    // Standard Channel: mark as sent with timestamp for ntime rolling
     m_jobSent = true;
+    m_jobSentTimeUs = esp_timer_get_time();
 
     return job;
 }
@@ -120,10 +124,40 @@ void MiningInfoV2Standard::setDifficulty(uint32_t difficulty)
     m_difficulty = difficulty;
     // Do NOT reset m_jobSent. Never resend the same Standard Channel job.
     // ASIC keeps mining with version rolling. New difficulty applies to
-    // the NEXT job from the pool (matches Bitaxe behavior).
+    // the NEXT job from the pool.
 }
 
-bool MiningInfoV2Standard::isValid() const { return m_ntime != 0 && !m_jobSent; }
+void MiningInfoV2Standard::setSearchSpaceMs(double ms)
+{
+    m_searchSpaceMs = ms;
+}
+
+bool MiningInfoV2Standard::isValid() const
+{
+    if (m_ntime == 0) return false;
+    if (!m_jobSent) return true;
+
+    // ntime rolling: if search space is exhausted, increment ntime and resend
+    if (m_searchSpaceMs > 0 && m_jobSentTimeUs > 0) {
+        int64_t elapsed_us = esp_timer_get_time() - m_jobSentTimeUs;
+        double elapsed_ms = (double)elapsed_us / 1000.0;
+
+        if (elapsed_ms >= m_searchSpaceMs) {
+            // Search space exhausted - roll ntime
+            // const_cast needed because isValid is const but we need to mutate
+            auto *self = const_cast<MiningInfoV2Standard *>(this);
+            self->m_ntime++;
+            self->m_ntimeRolls++;
+            self->m_jobSent = false;
+            ESP_LOGI("mining_info_v2", "ntime roll #%lu: ntime=%lu (search space %.1fs exhausted)",
+                     (unsigned long)self->m_ntimeRolls, (unsigned long)self->m_ntime,
+                     m_searchSpaceMs / 1000.0);
+            return true;
+        }
+    }
+
+    return false;
+}
 
 bool MiningInfoV2Standard::isNewWork(uint32_t &last_ntime) const
 {

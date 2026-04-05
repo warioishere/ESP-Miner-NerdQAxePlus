@@ -2,7 +2,9 @@
 #include "create_jobs_task.h"
 #include "mining_info_v2.h"
 #include "global_state.h"
+#include "boards/board.h"
 #include "macros.h"
+#include "system.h"
 
 #include "esp_log.h"
 
@@ -32,6 +34,20 @@ void create_job_sv2_standard(int pool, uint32_t job_id, uint32_t version,
     // Clear old jobs on clean flag
     if (clean) {
         asicJobs.cleanJobs(pool);
+    }
+
+    // Calculate search space timeout for ntime rolling (80% of full space)
+    Board *board = SYSTEM_MODULE.getBoard();
+    if (board && board->getAsics()) {
+        Asic *asics = board->getAsics();
+        double timeout_ms = asics->calculateSearchSpaceMs(
+            (float)board->getAsicFrequency(),
+            board->getAsicCount(),
+            asics->getCoreCount(),
+            asics->getSmallCoreCount(),
+            65536,  // version rolling count (0xFFFF mask)
+            0.8f);  // 80% - roll ntime before exhaustion
+        s_v2_standard[pool]->setSearchSpaceMs(timeout_ms);
     }
 
     // Point the global miningInfo to our V2 standard instance

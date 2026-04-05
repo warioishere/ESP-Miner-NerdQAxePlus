@@ -29,6 +29,9 @@ class MiningInfoV2Standard : public MiningInfoBase {
     /// Update difficulty mid-job (from SetTarget)
     void setDifficulty(uint32_t difficulty);
 
+    /// Set search space duration for ntime rolling (from calculateSearchSpaceMs)
+    void setSearchSpaceMs(double ms);
+
     /// Update with new job data from SV2 pool
     void updateJob(uint32_t job_id, uint32_t version,
                    const uint8_t merkle_root[32], const uint8_t prev_hash[32],
@@ -45,7 +48,10 @@ class MiningInfoV2Standard : public MiningInfoBase {
     uint32_t m_version_mask = 0x1fffe000;
     uint32_t m_difficulty = 0;
     char m_jobid_str[16];
-    bool m_jobSent = false;  ///< Standard Channel: job already sent to ASIC, don't resend
+    bool m_jobSent = false;          ///< Standard Channel: job already sent to ASIC, don't resend
+    int64_t m_jobSentTimeUs = 0;     ///< Timestamp when job was sent (for ntime rolling)
+    double m_searchSpaceMs = 0;      ///< How long search space lasts (from calculateSearchSpaceMs)
+    uint32_t m_ntimeRolls = 0;       ///< Number of ntime rolls since last pool job
 };
 
 
