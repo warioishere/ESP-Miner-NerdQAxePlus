@@ -12,9 +12,9 @@
 **Result:** All 4 ASICs hash, shares accepted, **no duplicate shares**, stable mining on Standard Channel! Chip ID distribution is the key to nonce partitioning.
 
 Changes needed:
-- `address_interval = 256 / chip_counter` (Bitaxe-style, instead of hardcoded 2 or 4)
+- `address_interval = 256 / chip_counter` (instead of hardcoded 2 or 4)
 - All per-chip `CMD_WRITE_SINGLE` commands use `i * address_interval`
-- Nonce-to-ASIC mapping: `((bswap32(nonce) >> 17) & 0xff) / address_interval` (matching Bitaxe)
+- Nonce-to-ASIC mapping: `((bswap32(nonce) >> 17) & 0xff) / address_interval`
 - `chipIndexFromAddr`: `addr / address_interval` (removed BM1370 override that used `addr >> 2`)
 - Register 0x10: HCN value from `setNonceSpace()` instead of VR frequency
 - `checkVrFrequencyChanged` disabled (was overwriting HCN on register 0x10)
@@ -22,10 +22,10 @@ Changes needed:
 
 This also works for multi-chip boards like OCTAXE (8 chips → address_interval=32).
 
-## Open question
+## Open questions
 
-The VR frequency UI feature (`checkVrFrequencyChanged`) writes to the same register 0x10 that HCN uses. The Bitaxe doesn't have this feature - it sets register 0x10 once during init via `set_nonce_space()` and never touches it again. Should we remove the VR frequency feature, or is there a way to combine both?
+### VR frequency feature
+`checkVrFrequencyChanged` writes to the same register 0x10 that HCN uses. Currently disabled to prevent overwriting HCN. Should we remove the VR frequency UI feature entirely, or is there a way to combine both?
 
-## Known issue
-
-After ~30 minutes, the pool increases difficulty via SetTarget. For Standard Channel, the old bm_job still has the previous pool_diff, causing shares to be submitted that the pool now considers too low. This is an SV2 Standard Channel issue (not nonce-space related) and will be fixed separately.
+### NerdOCTAXE needs ntime rolling
+The full nonce + version rolling search space at 9 TH/s lasts ~31 seconds. Most pools send new templates every 30-60 seconds. For the OCTAXE (and future faster devices), we need ntime rolling to avoid exhausting the search space between templates. Our plan: increment ntime every 5 seconds, giving enough headroom for overclocking and future higher-hashrate boards. With 60s template intervals that's max 12 ntime increments - well within pool tolerance.
